@@ -19,6 +19,8 @@ char version[] = "0.42";
 static int N_key;
 static int C_key;
 
+static unsigned long found_count;
+
 typedef struct option_info option_info;
 typedef struct plugin plugin;
 
@@ -26,11 +28,11 @@ struct option_info
 {
 	char *long_name;
 	char short_name;
-	int has_arg;
+	int has_arg;// just like struct option
 	char *arg; 
 	char was_set; // did we set this option or not 
 	char *info;
-	int affinity;
+	int affinity;// number of corresponding plugin in plugin_list (or -1 for default options)
 	
 };
 
@@ -40,13 +42,13 @@ static option_info **option_list;
 
 struct plugin
 {
-	char *path;
-	void *dlopen_pt;
+	char *path;//full name
+	void *dlopen_pt;// dlopen_pt = dlopen(file)
 	int (*get_info)(struct plugin_info *ppi);
 	int (*process_file)(const char *fname, struct option *in_opts[], size_t in_opts_len, char *out_buff, size_t out_buff_len);
 	
 	struct plugin_info info;
-	int opts_i;
+	int opts_i;// number of the first option in option_list that belongs to this plugin
 	
 };
 
@@ -55,7 +57,7 @@ static unsigned int plugin_count;
 static plugin **plugin_list;
 
 void mnh(void *ptr, int exit_code)
-{
+{//because my fingers hurt writing if... exit...
 	if(ptr == NULL)
 	{
 		//fprintf(2,"null malloc pointeri\n");
@@ -64,7 +66,7 @@ void mnh(void *ptr, int exit_code)
 }
 
 void *mallscpy(char *src)
-{
+{//again saves time. Don't forget to free()
 	char *ptr;
 	if (src == NULL)
 		//return NULL;
@@ -93,21 +95,8 @@ int search_dir(char *, unsigned int);
 int main(int argc, char* argv[])
 {
 	
-	//search_dir("test", 0);
-
-	/*char s[MAX_STR_LEN];
-	char *ptr = realpath("../parity.so",s);
-
-	printf("%s\n", ptr);*/
-	/*void *my_lib = dlopen("../123.so", RTLD_LAZY||RTLD_GLOBAL);
-	if(!my_lib)
-	{
-		printf("Error: %s", dlerror());
-	}
-
-	int (*info) (struct plugin_info*) = dlsym(my_lib, "plugin_get_info");	
-	printf("%d", info(NULL));*/
 	//SETUP
+	found_count = 0;
 
 	plugin_count = 0;
 	plugin_list = NULL;
@@ -115,19 +104,9 @@ int main(int argc, char* argv[])
 	option_count = 0;	
         option_list = NULL;
 
-	opterr = 0;
+	opterr = 0;//disable standard error messages
 
-	//get cwd for default plaguin search
-	char *cwd = getcwd(NULL, MAX_STR_LEN); 
-	if(cwd == NULL)
-	{
-		printf("error in getcwd()\n");
-		exit(1);
-	}
-	else
-	{
-		//printf("%s\n", cwd);
-	}
+	//add default options
 	
 	add_option_to_list("plugin", 'P', required_argument, NULL, "set path to plaguins. Arg required", -1);
 	add_option_to_list("log", 'l', required_argument, NULL, "set path to the log. Arg required", -1);
@@ -139,7 +118,7 @@ int main(int argc, char* argv[])
 	
 
 	
-	
+	//first run to find -P and -L. Without hooking up plugins we can't analise argv correctly so we need two runs.
 
 	while (1)
 	{
@@ -226,6 +205,8 @@ int main(int argc, char* argv[])
 				break;
 		}
 	}
+
+	//hooking up log file
 	FILE *logf;
 	if (option_list[1]->was_set == 1)
 	{
@@ -247,20 +228,30 @@ int main(int argc, char* argv[])
 		}
 	}
 	
+	//set -P
 	option_list[0]->was_set = 0;
 	fprintf(stderr,"P->arg =%s\n", option_list[0]->arg);
 
 
 
-
+	//print argv for debugging
 	for (int i = 0; i < argc; i++)
 		fprintf(stderr,"%s ", argv[i]);
 	fprintf(stderr,"\n");
 
+	//get current working directory
+	char *cwd = getcwd(NULL, MAX_STR_LEN);
+        if(cwd == NULL)
+        {
+                printf("error in getcwd()\n");
+                exit(1);
+        }
 
 
 	//WORK
-int (*get_info)(struct plugin_info *ppi);
+	
+	//pointers for plugin functions
+	int (*get_info)(struct plugin_info *ppi);
         int (*process_file)(const char *fname, struct option *in_opts[], size_t in_opts_len, char *out_buff, size_t out_buff_len);
 
 	DIR *dir;
@@ -269,6 +260,7 @@ int (*get_info)(struct plugin_info *ppi);
 
 	char so_name[MAX_STR_LEN];
 
+	//looking through current dir for plugins
 	dir = opendir(cwd);
 	if (dir == NULL)
 	{
@@ -279,7 +271,7 @@ int (*get_info)(struct plugin_info *ppi);
 	{
 		sd = readdir(dir);
 		if (sd == NULL)
-		{
+		{//can be an error or the end of the dir
 			fprintf(stderr, "NULL encountered while searching for plugins in src dir\n");
 			if (closedir(dir) != 0)
    			{
@@ -292,11 +284,12 @@ int (*get_info)(struct plugin_info *ppi);
 		unsigned int len = strlen(sd->d_name);
 		//printf("%s %d\n", sd->d_name, sd->d_type);
 		if (sd->d_type == DT_REG)
-		{
+		{//if it is a file
+			//if it is .so file
 			if(len > 3 && sd->d_name[len - 1] == 'o' && sd->d_name[len - 2] == 's' && sd->d_name[len - 3] == '.')
 			//printf("%s\n", sd->d_name);
 			if (realpath(sd->d_name, so_name) != NULL)
-			{
+			{//get full path
 				//printf("%s\n",so_name);
 				int err = 0;
 				err = attach_plugin(so_name);
@@ -315,10 +308,10 @@ int (*get_info)(struct plugin_info *ppi);
 		 
 		
 	}
-	
+	//look through -P dir for plugins	
 	if (option_list[0]->arg != NULL)
 	{
-		
+		//change dir to search in it
 		if(chdir(option_list[0]->arg) == 0)
 		{// -P is valid
 		// test for -P; it should not point to cwd
@@ -400,7 +393,7 @@ int (*get_info)(struct plugin_info *ppi);
 
 
 	//PARCING
-	//construct log_option
+	//construct log_option for getopt_long()
 	struct option *getopt_long_options = malloc((option_count + 1)*sizeof(struct option));
 	mnh(getopt_long_options, 55);	
 	for(int i = 0; i < option_count; i++)
@@ -432,7 +425,7 @@ int (*get_info)(struct plugin_info *ppi);
 
 		switch(c)
 		{
-			case 0:
+			case 0://long option encountered
 				if (option_list[option_index]->was_set != 0)
 				{
 					fprintf(stderr, "--%s was set twice or more. Exiting..", option_list[option_index]->long_name);
@@ -539,8 +532,6 @@ int (*get_info)(struct plugin_info *ppi);
 	}
 	
 
-	//check search dir
-	//printf("%s-opt|%d|%d\n", argv[optind],argc,optind);
 	if (option_list[3]->was_set != 0)// -N was set
         {
         	N_key = 1;
@@ -569,6 +560,7 @@ int (*get_info)(struct plugin_info *ppi);
 		free(C_check);
         }
 
+	//Help was called (-h or --help)
 	if(option_list[5]->was_set)
         {
                 printf("Help was called\n");
@@ -588,6 +580,8 @@ int (*get_info)(struct plugin_info *ppi);
 
 
 	//printf("%d %d\n", C_key, N_key);
+
+	//analyze rest of argv
 	if (optind == argc)
 	{//no search dir. print relevant info
 		printf("No search dir detected. Showing info\n");
@@ -622,7 +616,8 @@ int (*get_info)(struct plugin_info *ppi);
 				exit(101);
 			}
 
-			search_dir(".", 0);	
+			search_dir(".", 0);
+			printf("Found:%d files\n", found_count);	
 			if(chdir(cwd) != 0)
 			{
 				fprintf(stderr, "Can't switch back to cwd after recursive search\n");
@@ -659,6 +654,7 @@ int (*get_info)(struct plugin_info *ppi);
 
 void add_option_to_list(char *long_name, char short_name, int has_arg, char* arg, char *info, int affinity)
 {
+	//basically fill an array
 	option_count++;
 	if(option_count == 1)//we are about to add our first option
 	{
@@ -769,7 +765,6 @@ int attach_plugin(char *name)
 	if (process_file == NULL)
 		return -3;
 	//If we are here, both functions are found. Lets save this plugin
-	//printf("Ptest %d", get_info(NULL));
 
 	plugin_count++;
 	if (plugin_count == 1)
@@ -795,7 +790,7 @@ int attach_plugin(char *name)
 	plugin_list[plugin_count - 1]->process_file = process_file;
 
 
-	
+	//get plugin info from plugin function	
 	int ret =  plugin_list[plugin_count - 1]->get_info(&plugin_list[plugin_count - 1]->info);
 	if (ret != 0)
 		return ret;
@@ -833,9 +828,7 @@ int search_dir(char *dname, unsigned int depth)
 	
 	static char **out_buffs = NULL;
 	static struct option ***in_opts_arr = NULL;// array of array of pointers to options
-	/*static int N_key = 0;
-	static int C_key = 0;//0 - and; 1 - or*/
-	if (prep == 0)
+	if (prep == 0)//So we need to transform our big data structures to smaller ones for a plugin function
 	{//create necessary data structures
 		prep = 1;
 		//printf("staaaaaaatic noise\n");
@@ -899,7 +892,7 @@ int search_dir(char *dname, unsigned int depth)
 	
 	DIR *dir;
 	struct dirent *entry;
-
+	//open dir and search through it
 	if (!(dir = opendir(dname)))
 		return -1;
 
@@ -912,7 +905,7 @@ int search_dir(char *dname, unsigned int depth)
 			//create new string
 			char *new_dname = calloc(strlen(dname) + 1/*'/'*/ + strlen(entry->d_name) + 1/*'\0'*/, sizeof(char));
 			mnh(new_dname, 80);
-			
+			//attach dir_name/file_name
 			strncat(new_dname, dname, MAX_STR_LEN);
 			strncat(new_dname, "/", MAX_STR_LEN);
 			strncat(new_dname, entry->d_name, MAX_STR_LEN);
@@ -926,6 +919,7 @@ int search_dir(char *dname, unsigned int depth)
 			char *full_fname = calloc((strlen(dname) + 1 + strlen(entry->d_name) + 1),sizeof(char));
 			mnh(full_fname, 86);
 
+			//attach dir_name/file_name
 			strncat(full_fname, dname, MAX_STR_LEN);
 			strncat(full_fname, "/", MAX_STR_LEN);
 			strncat(full_fname, entry->d_name, MAX_STR_LEN);
@@ -933,6 +927,8 @@ int search_dir(char *dname, unsigned int depth)
 
 
 			int council = 0;//council must decide this file's fate
+			//if plugins returns 0 council++
+			// based on -C and -N All plugins must agree to print file, one of them should, or none
 			for(int i = 0; i < plugin_count; i++)
 			{
 				int rez;
@@ -954,11 +950,11 @@ int search_dir(char *dname, unsigned int depth)
 				//printf("%s\n", real_fname);
 			}
 
-			if (plugin_count == 0)
+			/*if (plugin_count == 0)
 			{// there is no plugins to decide. Print it anyway
                                 printf("%s\n", real_fname);
-			}
-			else if (C_key == 0)//And
+			}*/
+			if (C_key == 0)//And
 			{
 				if (council != plugin_count)// some plugins have diceded that this file is not worthy
 					council = 0;
@@ -974,6 +970,7 @@ int search_dir(char *dname, unsigned int depth)
 				if (option_list[1]->was_set != 0)//log was set so no need for double output
 					printf("Found:%s\n", real_fname);
 				fprintf(stderr,"Found:%s\n", real_fname);
+				found_count++;
 			}
 			free(full_fname);
 			free(real_fname);
