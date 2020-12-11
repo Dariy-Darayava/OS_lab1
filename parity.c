@@ -23,7 +23,7 @@ int plugin_get_info(struct plugin_info* ppi)
 	sup_opts->opt.flag = NULL;
 	sup_opts->opt.val = 0;	
 
-	sup_opts->opt_descr = "This plugin includes -parity key. When applied it will allow search for files with more odd  bytes(-parity odds), more even bytes(evens), or equal odd and equal bytes(eq)";
+	sup_opts->opt_descr = "This plugin includes -parity key. When applied it will allow search for files with more odd  bytes(--parity odds), more even bytes(evens), or equal odd and even bytes(eq)";
 
 	ppi->sup_opts = sup_opts;
 	return 0;

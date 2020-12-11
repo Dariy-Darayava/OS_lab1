@@ -14,7 +14,7 @@
 #define AND 1
 #define OR 0
 
-char version[] = "0.42";
+char version[] = "1.01";
 
 static int N_key;
 static int C_key;
@@ -610,11 +610,15 @@ int main(int argc, char* argv[])
 		if(chdir(argv[optind]) == 0)
 		{//correct search dir. searching
 			fprintf(stderr, "Correct search dir. Searching\n");
+			//check plugins
 			if (plugin_count == 0)
 			{
 				fprintf(stderr, "Error. No plugins detected while search dir is present. Please provide at least one plugin.\n");
 				exit(101);
 			}
+			
+			//for (int i = 0; i < 0;)
+			
 
 			search_dir(".", 0);
 			printf("Found:%d files\n", found_count);	
@@ -943,7 +947,7 @@ int search_dir(char *dname, unsigned int depth)
 				}
 				else if (rez < 0)
 				{//plugin[i] can't assess this file. Error message shal be printed
-					fprintf(stderr, "Error. Plugin(%s) can't assess %s.\n%s\n", plugin_list[i]->info.plugin_name, real_fname, out_buffs[i]);
+					fprintf(stderr, "Error(%d). Plugin(%s) can't assess %s.\n%s\n", rez, plugin_list[i]->info.plugin_name, real_fname, out_buffs[i]);
 					exit(100);
 				}
 					
@@ -958,14 +962,18 @@ int search_dir(char *dname, unsigned int depth)
 			{
 				if (council != plugin_count)// some plugins have diceded that this file is not worthy
 					council = 0;
-				
+			
 			}
 			else//Or
 			{
 				if(council <= 0)//None decided this file worthy
 					council = 0;
 			}
-			if (council * ((N_key == 1)? 0 : 1))
+
+			//printf("\n\n%d %d\n", ((N_key == 1)? 0 : 1), council);
+			if (N_key == 1)//N was set
+				council = !council;
+			if (council)
 			{// it is decided
 				if (option_list[1]->was_set != 0)//log was set so no need for double output
 					printf("Found:%s\n", real_fname);
