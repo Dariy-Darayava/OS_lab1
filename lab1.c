@@ -14,7 +14,7 @@
 #define AND 1
 #define OR 0
 
-char version[] = "1.01";
+char version[] = "1.1.2";
 
 static int N_key;
 static int C_key;
@@ -565,6 +565,7 @@ int main(int argc, char* argv[])
         {
                 printf("Help was called\n");
                 printf("This programm performs recursive search and seeks files based on hooked up plugins(\".\" is defaut plugin search dir)\n");
+		printf("If you see no output at all, error occured. Check log\n");
                 printf("This programm acceps options in following format:\n");
                 printf("./lab1 [Options] [Search dir]\n");
                 printf("\nStandart options:\n");
@@ -769,7 +770,20 @@ int attach_plugin(char *name)
 	if (process_file == NULL)
 		return -3;
 	//If we are here, both functions are found. Lets save this plugin
+	
 
+
+	//check if we already have this plugin plugged in
+	/*plugin_info curr_plugin_info;
+	int ret = get_info(&curr_plugin_info);
+	if (ret != 0)
+		return ret;
+	
+	for (int i = 0; i < plugin_count; i++)
+	{
+		if (strncmp(curr_plugin_info.plugin_name, plugin_list[i]->info.plugin_name, MAX_STR_LEN) == 0)
+			return 150;
+	}*/
 	plugin_count++;
 	if (plugin_count == 1)
 	{//first plugin
@@ -798,11 +812,13 @@ int attach_plugin(char *name)
 	int ret =  plugin_list[plugin_count - 1]->get_info(&plugin_list[plugin_count - 1]->info);
 	if (ret != 0)
 		return ret;
+	
+	//plugin_list[plugin_count - 1]-> info = 
 
 	//options
 	for (int i = 0; i < plugin_list[plugin_count - 1]->info.sup_opts_len; i++)
 	{
-		add_option_to_list(plugin_list[plugin_count - 1]->info.sup_opts[i].opt.name, -1, plugin_list[plugin_count -1]->info.sup_opts[i].opt.has_arg, NULL, plugin_list[plugin_count - 1]->info.sup_opts[i].opt_descr, plugin_count - 1);
+		add_option_to_list( (char *)plugin_list[plugin_count - 1]->info.sup_opts[i].opt.name, -1, plugin_list[plugin_count -1]->info.sup_opts[i].opt.has_arg, NULL, (char *)plugin_list[plugin_count - 1]->info.sup_opts[i].opt_descr, plugin_count - 1);
 		//printf("%d\n", plugin_list[plugin_count - 1]->info.sup_opts[0].opt.has_arg);
 		
 	}
@@ -853,7 +869,7 @@ int search_dir(char *dname, unsigned int depth)
 				in_opts_arr[i][j]->name = option_list[plugin_list[i]->opts_i + j]->long_name;
 				in_opts_arr[i][j]->has_arg = option_list[plugin_list[i]->opts_i + j]->has_arg;
 				if (in_opts_arr[i][j] != no_argument)
-					in_opts_arr[i][j]->flag = option_list[plugin_list[i]->opts_i + j]->arg;
+					in_opts_arr[i][j]->flag = (int *)option_list[plugin_list[i]->opts_i + j]->arg;
 				in_opts_arr[i][j]->val =0;
 				
 			}
