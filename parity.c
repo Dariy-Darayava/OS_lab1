@@ -35,7 +35,7 @@ int plugin_process_file(const char *fname,
         char *out_buff,
         size_t out_buff_len)
 {
-	int fd = open(fname, O_RDWR);
+	int fd = open(fname, O_RDONLY);
 	struct stat statbuf;
 
 

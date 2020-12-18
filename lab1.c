@@ -14,7 +14,7 @@
 #define AND 1
 #define OR 0
 
-char version[] = "1.1.2";
+char version[] = "1.1.3";
 
 static int N_key;
 static int C_key;
