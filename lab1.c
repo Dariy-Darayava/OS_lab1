@@ -14,7 +14,7 @@
 #define AND 1
 #define OR 0
 
-char version[] = "1.1.3";
+char version[] = "1.2.0";
 
 static int N_key;
 static int C_key;
@@ -49,12 +49,14 @@ struct plugin
 	
 	struct plugin_info info;
 	int opts_i;// number of the first option in option_list that belongs to this plugin
+	int was_set;// 0 if none of the plugin optipns were accessed
 	
 };
 
 
 static unsigned int plugin_count;
 static plugin **plugin_list;
+static unsigned int plugin_set_count;
 
 void mnh(void *ptr, int exit_code)
 {//because my fingers hurt writing if... exit...
@@ -100,6 +102,7 @@ int main(int argc, char* argv[])
 
 	plugin_count = 0;
 	plugin_list = NULL;
+	plugin_set_count = 0;
 	
 	option_count = 0;	
         option_list = NULL;
@@ -152,7 +155,7 @@ int main(int argc, char* argv[])
 			case 'P':
 				if (option_list[0]->was_set != 0)
 				{
-					fprintf(stderr,"there is several -P\n");
+					printf("there is several -P\n");
 					exit(1300);
 				}
 				//printf("Found P\n");
@@ -164,14 +167,14 @@ int main(int argc, char* argv[])
 				}
 				else
 				{
-					fprintf(stderr,"No arg for -P(--plugin)\n");
+					printf("No arg for -P(--plugin)\n");
 					exit(1200);
 				}
 				break;
 			case 'l':
 				if (option_list[1]->was_set !=0)
 				{
-					fprintf(stderr,"There is several -l keys\n");
+					printf("There is several -l keys\n");
 					exit(1400);
 				}
 				if (optarg)
@@ -181,7 +184,7 @@ int main(int argc, char* argv[])
 				}
 				else
 				{
-					fprintf(stderr,"No arg for -l(--log)\n");
+					printf("No arg for -l(--log)\n");
 					exit(1500);
 				}
 				break;
@@ -432,6 +435,7 @@ int main(int argc, char* argv[])
 					exit(61);
 				}
 				option_list[option_index]->was_set++;
+				plugin_list[option_list[option_index]->affinity]->was_set++;
 				if ((option_list[option_index]->has_arg != no_argument) && (optarg != NULL) )
 					option_list[option_index]->arg = mallscpy(optarg);
 				break;
@@ -512,6 +516,14 @@ int main(int argc, char* argv[])
 
 		
 	}
+	//count number of plugins set
+	for (int i = 0; i < plugin_count; i++)
+	{
+		if (plugin_list[i]->was_set != 0)
+			plugin_set_count++;
+	}
+	
+	
 	//Log all recorded options
 	fprintf(stderr,"\nOptions:\n");
         for(int i = 0; i < option_count; i++)
@@ -616,6 +628,11 @@ int main(int argc, char* argv[])
 			{
 				fprintf(stderr, "Error. No plugins detected while search dir is present. Please provide at least one plugin.\n");
 				exit(101);
+			}
+			if (plugin_set_count == 0)
+			{
+				fprintf(stderr, "Error. No plugin options were detected while search dir is present. please add an option\n");
+				exit(1233211);
 			}
 			
 			//for (int i = 0; i < 0;)
@@ -823,6 +840,7 @@ int attach_plugin(char *name)
 		
 	}
 	plugin_list[plugin_count - 1]->opts_i = option_count - plugin_list[plugin_count - 1]->info.sup_opts_len + 1 - 1;
+	plugin_list[plugin_count - 1]->was_set = 0;
 	return 0;
 }
 
@@ -951,6 +969,9 @@ int search_dir(char *dname, unsigned int depth)
 			// based on -C and -N All plugins must agree to print file, one of them should, or none
 			for(int i = 0; i < plugin_count; i++)
 			{
+				if (plugin_list[i]->was_set == 0)
+					continue;
+
 				int rez;
 				rez = plugin_list[i]->process_file(real_fname, in_opts_arr[i], plugin_list[i]->info.sup_opts_len, out_buffs[i], MAX_STR_LEN);
 				if (rez == 0)
@@ -976,7 +997,7 @@ int search_dir(char *dname, unsigned int depth)
 			}*/
 			if (C_key == 0)//And
 			{
-				if (council != plugin_count)// some plugins have diceded that this file is not worthy
+				if (council != plugin_set_count)// some plugins have diceded that this file is not worthy
 					council = 0;
 			
 			}
