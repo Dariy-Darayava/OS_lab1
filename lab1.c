@@ -6,15 +6,16 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <ctype.h>
+#include <errno.h>
 
 #include "plugin_api.h"
 
 
-#define MAX_STR_LEN 255
+#define MAX_STR_LEN 512
 #define AND 1
 #define OR 0
 
-char version[] = "1.2.0";
+char version[] = "1.3.0";
 
 static int N_key;
 static int C_key;
@@ -57,13 +58,27 @@ struct plugin
 static unsigned int plugin_count;
 static plugin **plugin_list;
 static unsigned int plugin_set_count;
+static const int standart_opt_count = 7;
+
+static int debug_mode = 0;
+
+
+void _mexit(int code)
+{
+    printf("Something went wrong\n");
+    exit(code);
+}
+
+
+
+
 
 void mnh(void *ptr, int exit_code)
 {//because my fingers hurt writing if... exit...
 	if(ptr == NULL)
 	{
 		//fprintf(2,"null malloc pointeri\n");
-		exit(exit_code);
+		_mexit(exit_code);
 	}
 }
 
@@ -72,13 +87,13 @@ void *mallscpy(char *src)
 	char *ptr;
 	if (src == NULL)
 		//return NULL;
-		exit(2200);
+		_mexit(2200);
 	if (strlen(src) >= MAX_STR_LEN)
 		//return NULL;
-		exit(3000);
-	ptr = malloc(sizeof(char)*strlen(src + 1));
+		_mexit(3000);
+	ptr = calloc(strlen(src) + 1,sizeof(char));
         mnh(ptr, 4000);
-        strncpy(ptr, src,strlen(src));
+    strncpy(ptr, src,strlen(src));
         ptr[strlen(src)] = '\0';
 	return ptr;
 }
@@ -105,7 +120,7 @@ int main(int argc, char* argv[])
 	plugin_set_count = 0;
 	
 	option_count = 0;	
-        option_list = NULL;
+    option_list = NULL;
 
 	opterr = 0;//disable standard error messages
 
@@ -117,11 +132,12 @@ int main(int argc, char* argv[])
 	add_option_to_list("inverse", 'N', no_argument, NULL, "inverse search condition(s). No arg", -1);
 	add_option_to_list("version", 'v', no_argument, NULL, "show version. No arg", -1);
 	add_option_to_list("help", 'h', no_argument, NULL, "help. No arg", -1);        
+    add_option_to_list("debug", 'd', no_argument, NULL, "Print debug info. No arg", -1);
 
 	
 
 	
-	//first run to find -P and -L. Without hooking up plugins we can't analise argv correctly so we need two runs.
+	//first run to find -P and -L and -d. Without hooking up plugins we can't analise argv correctly so we need two runs.
 
 	while (1)
 	{
@@ -134,10 +150,11 @@ int main(int argc, char* argv[])
                    {"inverse", no_argument, 0,  'N' },
                    {"version", no_argument, 0,  'v' },
                    {"help", no_argument, 0,  'h' },
+                   {"debug", no_argument, 0,  'd' },
                    {0,         0,                 0,  0 }
                };
 		//c = getopt_long(argc, argv, "P:l:C:Nvh", long_options, &option_index);
-		c = getopt_long(argc, argv, "-:P:l:C:Nvh", long_options_fs, &option_index);
+		c = getopt_long(argc, argv, "-:P:l:C:Nvhd", long_options_fs, &option_index);
 		if (c == -1)
 			break;
 		switch (c)
@@ -155,8 +172,8 @@ int main(int argc, char* argv[])
 			case 'P':
 				if (option_list[0]->was_set != 0)
 				{
-					printf("there is several -P\n");
-					exit(1300);
+					printf("There is several -P(--plugin). Exiting\n");
+					_mexit(1300);
 				}
 				//printf("Found P\n");
 				if (optarg)
@@ -167,15 +184,17 @@ int main(int argc, char* argv[])
 				}
 				else
 				{
-					printf("No arg for -P(--plugin)\n");
-					exit(1200);
+					printf("No arg for -P(--plugin). Exiting\n");
+					_mexit(1200);
 				}
+				
+   
 				break;
 			case 'l':
 				if (option_list[1]->was_set !=0)
 				{
-					printf("There is several -l keys\n");
-					exit(1400);
+					printf("There is several -l(--log) keys. Exiting\n");
+					_mexit(1400);
 				}
 				if (optarg)
 				{
@@ -184,8 +203,8 @@ int main(int argc, char* argv[])
 				}
 				else
 				{
-					printf("No arg for -l(--log)\n");
-					exit(1500);
+					printf("No arg for -l(--log). Exiting\n");
+					_mexit(1500);
 				}
 				break;
 			case 'C':
@@ -196,58 +215,82 @@ int main(int argc, char* argv[])
 				break;
 			case 'h':
 				break;
+            case 'd':
+                if (option_list[6]->was_set !=0)
+				{
+					printf("There is several -d(--debug) keys\n");
+					_mexit(1400);
+				}
+				option_list[6]->was_set++;
+				break;
 			case '?':
 				//fprintf(s"Found unknown key\n");
 				break;
 			case ':':
 				printf("Missing argument\n");
-				exit(100000);
+				_mexit(100000);
 				break;
 			default:
 				printf("Unexpected result\n");
 				break;
 		}
 	}
-
+	if (option_list[6]->was_set != 0)
+        debug_mode = 1;
+    
+	if (debug_mode) fprintf(stderr, "Analyze first scan results\n");
+    if (debug_mode) fprintf(stderr, "First optarg scan was successful\n\n");
 	//hooking up log file
 	FILE *logf;
 	if (option_list[1]->was_set == 1)
 	{
+        if (debug_mode) fprintf(stderr, "log file found:%s", option_list[1]->arg);
+        
 		option_list[1]->was_set = 0;
 		if (option_list[1]->arg == NULL)
 		{
-			fprintf(stderr, "No arg for -l(--log)");
-			exit(1501);
+			if (debug_mode) fprintf(stderr, "No arg for -l(--log)\n");
+			_mexit(1501);
 		}
 		else
 		{	
 			logf = freopen(option_list[1]->arg, "w+", stderr);
 			if (logf == NULL)
 			{
-				fprintf(stderr, "Error while rerouting stderr to log file\n");
-				exit(1502);
+				if (debug_mode) fprintf(stderr, "Error while opening log file\n");
+				_mexit(1502);
 			}
 
 		}
 	}
 	
 	//set -P
+	if (debug_mode) fprintf(stderr,"Plugin dir:%s\n\n", option_list[0]->arg);
 	option_list[0]->was_set = 0;
-	fprintf(stderr,"P->arg =%s\n", option_list[0]->arg);
-
+	
+    
 
 
 	//print argv for debugging
-	for (int i = 0; i < argc; i++)
-		fprintf(stderr,"%s ", argv[i]);
-	fprintf(stderr,"\n");
+    if (debug_mode)
+    {
+        fprintf(stderr, "Original argv:\n");
+        for (int i = 0; i < argc; i++)
+            fprintf(stderr,"%s ", argv[i]);
+        fprintf(stderr,"\n\n");
+    }
 
+    if (debug_mode) fprintf(stderr,"Checking getcwd()...\n");
 	//get current working directory
 	char *cwd = getcwd(NULL, MAX_STR_LEN);
         if(cwd == NULL)
         {
-                printf("error in getcwd()\n");
-                exit(1);
+                if (debug_mode) fprintf(stderr, "Error in getcwd()\n");
+                _mexit(1);
+        }
+        else
+        {
+                if (debug_mode) fprintf(stderr, "cwd:%s\n\n", cwd);
         }
 
 
@@ -264,26 +307,29 @@ int main(int argc, char* argv[])
 	char so_name[MAX_STR_LEN];
 
 	//looking through current dir for plugins
+    
+    if (debug_mode) fprintf(stderr,"Scanning current working directory for .so files\n");
 	dir = opendir(cwd);
 	if (dir == NULL)
 	{
-		fprintf(stderr, "cannot open src dir\n");
-		exit(80085);
+		if (debug_mode) fprintf(stderr, "Can't open src dir(opendir() error)\n");
+		_mexit(80085);
 	}
 	while (1)
 	{
 		sd = readdir(dir);
 		if (sd == NULL)
 		{//can be an error or the end of the dir
-			fprintf(stderr, "NULL encountered while searching for plugins in src dir\n");
+			if (debug_mode) fprintf(stderr, "NULL encountered while searching for plugins in src dir\n");
 			if (closedir(dir) != 0)
    			{
-                		fprintf(stderr, "Error while closind dirent dir\n");
-                		exit(413314);
-        		}
+                		if (debug_mode) fprintf(stderr, "Error in closedir() while closing cwd\n");
+                		_mexit(413314);
+            }
 
 			break;
 		}
+		if (debug_mode) fprintf(stderr, "Assessing %s\n", sd->d_name);
 		unsigned int len = strlen(sd->d_name);
 		//printf("%s %d\n", sd->d_name, sd->d_type);
 		if (sd->d_type == DT_REG)
@@ -291,66 +337,76 @@ int main(int argc, char* argv[])
 			//if it is .so file
 			if(len > 3 && sd->d_name[len - 1] == 'o' && sd->d_name[len - 2] == 's' && sd->d_name[len - 3] == '.')
 			//printf("%s\n", sd->d_name);
-			if (realpath(sd->d_name, so_name) != NULL)
-			{//get full path
-				//printf("%s\n",so_name);
-				int err = 0;
-				err = attach_plugin(so_name);
-				if ( err != 0)
-				{
-					fprintf(stderr, "Can't attach %s(%d)\n", so_name,err);
-					continue;
-				}
-			}
-			else
-			{
-				fprintf(stderr, "Can't resolve realpath for %s... Skipping\n", sd->d_name);
-				continue;
-			}
+                if (realpath(sd->d_name, so_name) != NULL)
+                {//get full path
+                    //printf("%s\n",so_name);
+                    int err = 0;
+                    err = attach_plugin(so_name);
+                    if ( err != 0)
+                    {
+                        if (debug_mode) fprintf(stderr, "Can't attach %s(Error:%d)\n", so_name,err);
+                        continue;
+                    }
+                    else
+                    {
+                        if (debug_mode) fprintf(stderr, "%s attached\n", so_name);
+                    }
+                }
+                else
+                {
+                    if (debug_mode) fprintf(stderr, "Can't resolve realpath for %s Skipping\n", sd->d_name);
+                    continue;
+                }
 		}
 		 
 		
 	}
+	
+	 
 	//look through -P dir for plugins	
 	if (option_list[0]->arg != NULL)
 	{
+        if (debug_mode) fprintf(stderr,"\nScanning -P directory for .so files\n");
 		//change dir to search in it
-		if(chdir(option_list[0]->arg) == 0)
+        if(chdir(option_list[0]->arg) == 0)
+        //if(chdir("../klab1/labaratornaya1/") == 0)
 		{// -P is valid
 		// test for -P; it should not point to cwd
-		char *pd = getcwd(NULL, MAX_STR_LEN);
+            char *pd = getcwd(NULL, MAX_STR_LEN);
 	        if(pd == NULL)
        		{
-	               	printf("error in getcwd() for -P\n");
-	                exit(45);
+	               	if (debug_mode) printf("Error in getcwd() while comparing -P and cwd\n");
+	                _mexit(45);
 	        }
 	        
-		if (strcmp(cwd, pd) == 0)
-		{
-			fprintf(stderr, "Fatal error: -P points to cwd\n");
-			exit(46);
-		}
-		free(pd);
-		dir = opendir(".");
+            if (strcmp(cwd, pd) == 0)
+            {
+                if (debug_mode) fprintf(stderr, "Fatal error: -P points to cwd\n");
+                _mexit(46);
+            }
+            free(pd);
+            
+            dir = opendir(".");
 		        if (dir == NULL)
 		        {
-		                fprintf(stderr, "cannot open -P dir\n");
-		                exit(43);
+		                if (debug_mode) fprintf(stderr, "Can't open -P dir(opendir() error)\n");
+		                _mexit(43);
 		        }
 		        while (1)
 		        {
 		                sd = readdir(dir);
 		                if (sd == NULL)
 		                {
-		                        fprintf(stderr, "NULL encountered while searching for plugins in -P dir\n");
+		                        if (debug_mode) fprintf(stderr, "NULL encountered while searching for plugins in -P dir\n");
 		                        if (closedir(dir) != 0)
 		                        {
-		                                fprintf(stderr, "Error while closind dirent dir\n");
-                		                exit(44);
+		                                if (debug_mode) fprintf(stderr, "Error in closedir() in -P\n");
+                		                _mexit(44);
 		                        }
 
                 		        break;
 		                }
+		                if (debug_mode) fprintf(stderr, "Assessing %s\n", sd->d_name);
               			unsigned int len = strlen(sd->d_name);
 		                if (sd->d_type == DT_REG)
 		                {
@@ -358,18 +414,22 @@ int main(int argc, char* argv[])
 		                        if (realpath(sd->d_name, so_name) != NULL)
                 		        {
 		                                //printf("%s\n",so_name);
-						int err = 0;
+                                        int err = 0;
 	        	                        err = attach_plugin(so_name);
 		                                if ( err != 0)
 	                	                {
-	                        	                fprintf(stderr, "Can't attach %s(%d)\n", so_name,err);
+	                        	                if (debug_mode) fprintf(stderr, "Can't attach %s(%d)\n", so_name,err);
 	                                	        continue;
-						}
+                                        }
+                                        else
+                                        {
+                                            if (debug_mode) fprintf(stderr, "%s attached\n", so_name);
+                                        }
 
 		                        }
 		                        else
 		                        {
-		                                fprintf(stderr, "Can't resolve realpath for %s... Skipping\n", sd->d_name);
+		                                if (debug_mode) fprintf(stderr, "Can't resolve realpath for %s Skipping\n", sd->d_name);
 		                                continue;
 		                        }
 		                }
@@ -381,16 +441,18 @@ int main(int argc, char* argv[])
 
 			if(chdir(cwd) != 0)
 			{	
-			fprintf(stderr, "Fatal error: cannot change dir back to cwd\n");
-			exit(40);
+                if (debug_mode) fprintf(stderr, "Fatal error: cannot change -P dir back to cwd\n");
+                _mexit(40);
 			}
 		}
 		else
 		{// -p is not valid
-			fprintf(stderr, "Fatal error: path written in -P is not valid\n");
-			exit(41);
+			if (debug_mode) fprintf(stderr, "Fatal error: path written in -P[%s] is not valid(chdir() errno:%d)\n",option_list[0]->arg,  errno);
+            if (debug_mode) perror(NULL);
+			_mexit(41);
 		}
-	}	
+	}
+	
 	
 
 
@@ -420,7 +482,7 @@ int main(int argc, char* argv[])
 		int c = -1;
 		int option_index = 1;
 
-		c = getopt_long(argc, argv, "+:P:l:C:Nvh", getopt_long_options, &option_index);
+		c = getopt_long(argc, argv, "+:P:l:C:Nvhd", getopt_long_options, &option_index);
 		//c = getopt_long(argc, argv, "+:P:", getopt_long_options, &option_index);
 		
 		if (c == -1)
@@ -431,8 +493,8 @@ int main(int argc, char* argv[])
 			case 0://long option encountered
 				if (option_list[option_index]->was_set != 0)
 				{
-					fprintf(stderr, "--%s was set twice or more. Exiting..", option_list[option_index]->long_name);
-					exit(61);
+					if (debug_mode) fprintf(stderr, "--%s was set twice or more. Exiting..", option_list[option_index]->long_name);
+					_mexit(61);
 				}
 				option_list[option_index]->was_set++;
 				plugin_list[option_list[option_index]->affinity]->was_set++;
@@ -443,8 +505,8 @@ int main(int argc, char* argv[])
 				if (option_list[0]->was_set != 0)
 				{
 					
-					fprintf(stderr, "-P(--plugin) was set twice or more. Exiting...\n");
-					exit(62);
+					if (debug_mode) fprintf(stderr, "-P(--plugin) was set twice or more. Exiting...\n");
+					_mexit(62);
 				}
 				option_list[0]->was_set++;
 				//if (option_list[0]->has_arg != no_argument)
@@ -456,8 +518,8 @@ int main(int argc, char* argv[])
 				if (option_list[1]->was_set != 0)
                                 {
 
-                                        fprintf(stderr, "-l(--log) was set twice or more. Exiting...\n");
-                                        exit(63);
+                                        if (debug_mode)fprintf(stderr, "-l(--log) was set twice or more. Exiting...\n");
+                                        _mexit(63);
                                 }
                                 option_list[1]->was_set++;
 				//option_list[1]->arg = mallscpy(optarg);
@@ -466,8 +528,8 @@ int main(int argc, char* argv[])
 				if (option_list[2]->was_set != 0)
                                 {
 
-                                        fprintf(stderr, "-C(--compare) was set twice or more. Exiting...\n");
-                                        exit(64);
+                                        if (debug_mode)fprintf(stderr, "-C(--compare) was set twice or more. Exiting...\n");
+                                        _mexit(64);
                                 }
                                 option_list[2]->was_set++;
                                 option_list[2]->arg = mallscpy(optarg);
@@ -476,8 +538,8 @@ int main(int argc, char* argv[])
 				if (option_list[3]->was_set != 0)
                                 {
 
-                                        fprintf(stderr, "-N(--inverse) was set twice or more. Exiting...\n");
-                                        exit(65);
+                                        if (debug_mode) fprintf(stderr, "-N(--inverse) was set twice or more. Exiting...\n");
+                                        _mexit(65);
                                 }
                                 option_list[3]->was_set++;
 				break;
@@ -485,8 +547,8 @@ int main(int argc, char* argv[])
 				if (option_list[4]->was_set != 0)
                                 {
 
-                                        fprintf(stderr, "-v(--version) was set twice or more. Exiting...\n");
-                                        exit(66);
+                                        if (debug_mode) fprintf(stderr, "-v(--version) was set twice or more. Exiting...\n");
+                                        _mexit(66);
                                 } 
                                 option_list[4]->was_set++;
 
@@ -495,23 +557,39 @@ int main(int argc, char* argv[])
 				if (option_list[5]->was_set != 0)
                                 {
 
-                                        fprintf(stderr, "-h(--help) was set twice or more. Exiting...\n");
-                                        exit(67);
+                                        if (debug_mode) fprintf(stderr, "-h(--help) was set twice or more. Exiting...\n");
+                                        _mexit(67);
                                 } 
                                 option_list[5]->was_set++;
 
 				break;
+            case 'd':
+                /*if (option_list[6]->was_set == 0)
+                {
+                    fprintf(stderr, "-d(--debug) was found on the second scan but not on the first. Exiting\n");
+                    _mexit(6969);
+                }
+				if (option_list[6]->was_set == 1)
+                    option_list[6]->was_set++;
+                if (option_list[6]->was_set == 2)
+                                {
+
+                                        fprintf(stderr, "-h(--help) was set twice or more. Exiting...\n");
+                                        _mexit(67);
+                                } 
+                */
+				break;    
 			case ':':
-				fprintf(stderr, "Missing argument for one of the keys. Exiting\n");
-				exit(60);
+				if (debug_mode) fprintf(stderr, "Missing argument for one of the keys. Exiting\n");
+				_mexit(60);
 				break;
 			case '?':
-				fprintf(stderr, "Found unknown key. Exiting...\n");
-				exit(61);
+				if (debug_mode) fprintf(stderr, "Found unknown key. Exiting...\n");
+				_mexit(61);
 				break;
 			default:
-				fprintf(stderr, "Unexpected error during [%s]option parcing %d(%c)[%d]\n",argv[optind - 1], c,c,optind -1);
-				exit(62);
+				if (debug_mode) fprintf(stderr, "Unexpected error during [%s]option parcing %d(%c)[%d]\n",argv[optind - 1], c,c,optind -1);
+				_mexit(62);
 		}
 
 		
@@ -525,53 +603,60 @@ int main(int argc, char* argv[])
 	
 	
 	//Log all recorded options
-	fprintf(stderr,"\nOptions:\n");
+	if (debug_mode)
+    {
+        fprintf(stderr,"\nSecond optarg scan is successful.\nRecorded options:\n");
         for(int i = 0; i < option_count; i++)
-        {
-                fprintf(stderr, "%s(%d):",option_list[i]->long_name, option_list[i]->was_set);
-                if((option_list[i]->was_set != 0) && (option_list[i]->has_arg != no_argument))
-                        fprintf(stderr,"%s", option_list[i]->arg);
-                fprintf(stderr,"\n");
-        }
-	fprintf(stderr, "\n");
+            {
+                    fprintf(stderr, "%s(%d):",option_list[i]->long_name, option_list[i]->was_set);
+                    if((option_list[i]->was_set != 0) && (option_list[i]->has_arg != no_argument))
+                            fprintf(stderr,"%s", option_list[i]->arg);
+                    fprintf(stderr,"\n");
+            }
+        fprintf(stderr, "\n");
+    }
 
 
 	//show version if asked
+    if (debug_mode) fprintf(stderr, "Checking -v...\n");
 	if(option_list[4]->was_set)
 	{
 		printf("Version:%s\n",version);
 		//fprintf(stderr, "Version:%s\n",version);
 	}
 	
-
+    if (debug_mode) fprintf(stderr, "Checking -N...\n");
 	if (option_list[3]->was_set != 0)// -N was set
-        {
-        	N_key = 1;
-        }
+    {
+        N_key = 1;
+    }
 	else
 	{
 		N_key = 0;
 	}
-        if (option_list[2]->was_set != 0)//-C was set. And = 0; Or = 1
-        {
+	
+	if (debug_mode) fprintf(stderr, "Checking -C...\n");
+    if (option_list[2]->was_set != 0)//-C was set. And = 0; Or = 1
+    {
 		C_key = 0;//Default and
-        	char *C_check = mallscpy(option_list[2]->arg);
-                for (int i = 0; i < strlen(C_check); i++)
-                {
-                	C_check[i] = tolower(C_check[i]);
-                }
-                if((strncmp(C_check, "and", 3) == 0) && (strlen(C_check) == strlen("and")))
-                        C_key = 0;
-                else if((strncmp(C_check, "or", 2) == 0) && (strlen(C_check) == strlen("or")))
-			C_key = 1;
-                else
-              	{
-                	fprintf(stderr, "Wrong -C arg\n");
-                        exit(85);
-                }
-		free(C_check);
+        char *C_check = mallscpy(option_list[2]->arg);
+        for (int i = 0; i < strlen(C_check); i++)
+        {
+            C_check[i] = tolower(C_check[i]);
         }
+        if((strncmp(C_check, "and", 3) == 0) && (strlen(C_check) == strlen("and")))
+            C_key = 0;
+        else if((strncmp(C_check, "or", 2) == 0) && (strlen(C_check) == strlen("or")))
+			C_key = 1;
+        else
+        {
+            if (debug_mode) fprintf(stderr, "Wrong -C arg\n");
+            _mexit(85);
+        }
+        free(C_check);
+    }
 
+    if (debug_mode) fprintf(stderr, "Checking -h...\n\n");
 	//Help was called (-h or --help)
 	if(option_list[5]->was_set)
         {
@@ -581,7 +666,7 @@ int main(int argc, char* argv[])
                 printf("This programm acceps options in following format:\n");
                 printf("./lab1 [Options] [Search dir]\n");
                 printf("\nStandart options:\n");
-                for (int i = 0; i < 6; i++)
+                for (int i = 0; i < standart_opt_count; i++)
                 {
                         printf("--%s(-%c): %s\n",option_list[i]->long_name, option_list[i]->short_name, option_list[i]->info);
                 }
@@ -593,7 +678,7 @@ int main(int argc, char* argv[])
 
 
 	//printf("%d %d\n", C_key, N_key);
-
+    
 	//analyze rest of argv
 	if (optind == argc)
 	{//no search dir. print relevant info
@@ -611,7 +696,7 @@ int main(int argc, char* argv[])
 		}
 
 		printf("\n\nStandart options:\n");
-		for (int i = 0; i < 6; i++)
+		for (int i = 0; i < standart_opt_count; i++)
                 {
                         printf("--%s(-%c): %s\n",option_list[i]->long_name, option_list[i]->short_name, option_list[i]->info);
                 }
@@ -620,19 +705,20 @@ int main(int argc, char* argv[])
 	}
 	else if (optind == argc - 1)
 	{//search dir detected. Is it correct?
+        if (debug_mode) fprintf(stderr, "There is one arg after options. Checking validity\n");
 		if(chdir(argv[optind]) == 0)
 		{//correct search dir. searching
-			fprintf(stderr, "Correct search dir. Searching\n");
+			if (debug_mode) fprintf(stderr, "Correct search dir. Searching\n");
 			//check plugins
 			if (plugin_count == 0)
 			{
-				fprintf(stderr, "Error. No plugins detected while search dir is present. Please provide at least one plugin.\n");
-				exit(101);
+				if (debug_mode) fprintf(stderr, "Error. No plugins detected while search dir is present. Please provide at least one plugin.\n");
+				_mexit(101);
 			}
 			if (plugin_set_count == 0)
 			{
-				fprintf(stderr, "Error. No plugin options were detected while search dir is present. please add an option\n");
-				exit(1233211);
+				if (debug_mode) fprintf(stderr, "Error. No plugin options were detected while search dir is present. please add an option\n");
+				_mexit(1233211);
 			}
 			
 			//for (int i = 0; i < 0;)
@@ -642,30 +728,33 @@ int main(int argc, char* argv[])
 			printf("Found:%d files\n", found_count);	
 			if(chdir(cwd) != 0)
 			{
-				fprintf(stderr, "Can't switch back to cwd after recursive search\n");
+				if (debug_mode) fprintf(stderr, "Can't switch back to cwd after recursive search\n");
 			}
 			
 		}
 		else
 		{//incorrect exiting
-			fprintf(stderr, "Incorrect search dir. Exiting...\n");
-			exit(70);
+			if (debug_mode) fprintf(stderr, "Incorrect search dir(chdir() error). Exiting...\n");
+			_mexit(70);
 		}
 		
 	}
 	else
 	{
-		fprintf(stderr,"More than one arg after keys or unmanted arg in the middle of key sequence(%d). Exiting...\n", optind );
-		exit(70);
+		if (debug_mode) fprintf(stderr,"More than one arg after options or there is an extra arg in the middle of key sequence(%d). Exiting...\n", optind );
+		_mexit(70);
 	}
 
 
-	
+	if (debug_mode) fprintf(stderr, "\nCleanup\nfree(cwd)\n");
 	//CLEANUP
 	free(cwd);
-	
+	if (debug_mode) fprintf(stderr, "free(getopt_long_options)\n");
 	free(getopt_long_options);	
+    
+    if (debug_mode) fprintf(stderr, "Clear options\n");
 	clear_option_list();
+    if (debug_mode) fprintf(stderr, "Clear plugins\n");
 	clear_plugin_list();	
 
 	return 0;
@@ -696,10 +785,13 @@ void add_option_to_list(char *long_name, char short_name, int has_arg, char* arg
 	//fill new option_info
 	if(long_name != NULL)
 	{
-		option_list[option_count - 1]->long_name = malloc(sizeof(char)*strlen(long_name + 1));
+		/*option_list[option_count - 1]->long_name = malloc(sizeof(char)*strlen(long_name + 1));
 		mnh((void *)option_list[option_count - 1]->long_name , 5);
-		strncpy(option_list[option_count - 1]->long_name, long_name,strlen(long_name));
-		option_list[option_count - 1]->long_name[strlen(long_name)] = '\0';
+		strncpy(option_list[option_count - 1]->long_name, long_name,strlen(long_name) + 1);
+		option_list[option_count - 1]->long_name[strlen(long_name)] = '\0';*/
+        option_list[option_count - 1]->long_name = strndup(long_name, MAX_STR_LEN);
+        mnh((void *)option_list[option_count - 1]->long_name , 5);
+        
 	}
 	else
 	{
@@ -723,10 +815,12 @@ void add_option_to_list(char *long_name, char short_name, int has_arg, char* arg
 
 	if(arg != NULL)
 	{
-		option_list[option_count - 1]->arg = malloc(sizeof(char)*strlen(arg + 1));
-                mnh((void *)option_list[option_count - 1]->arg , 7);
-                strncpy(option_list[option_count - 1]->arg, arg,strlen(arg));
-                option_list[option_count - 1]->arg[strlen(arg)] = '\0';
+		/*option_list[option_count - 1]->arg = malloc(sizeof(char)*strlen(arg + 1));
+        mnh((void *)option_list[option_count - 1]->arg , 7);
+        strncpy(option_list[option_count - 1]->arg, arg,strlen(arg));
+        option_list[option_count - 1]->arg[strlen(arg)] = '\0';*/
+        option_list[option_count - 1]->arg = strndup(arg, MAX_STR_LEN);
+        mnh((void *)option_list[option_count - 1]->arg , 7);
 
 	}
 	else
@@ -736,10 +830,13 @@ void add_option_to_list(char *long_name, char short_name, int has_arg, char* arg
 
 	if(info != NULL)
 	{
-		option_list[option_count - 1]->info = malloc(sizeof(char)*strlen(info + 1));
-                mnh((void *)option_list[option_count - 1]->info , 8);
-                strncpy(option_list[option_count - 1]->info, info,strlen(info));
-                option_list[option_count - 1]->info[strlen(info)] = '\0';
+		/*option_list[option_count - 1]->info = malloc(sizeof(char)*strlen(info + 1));
+        mnh((void *)option_list[option_count - 1]->info , 8);
+        strncpy(option_list[option_count - 1]->info, info,strlen(info));
+        option_list[option_count - 1]->info[strlen(info)] = '\0';*/
+        
+        option_list[option_count - 1]->info = strndup(info, MAX_STR_LEN);
+        mnh((void *)option_list[option_count - 1]->info , 8);
 	}
 	else
 		  option_list[option_count - 1]->info = NULL;
@@ -755,17 +852,25 @@ void add_option_to_list(char *long_name, char short_name, int has_arg, char* arg
 void clear_option_list()
 {
 	if (option_count == 0) return;
+    
 	for (int i = 0; i < option_count ; i++)
 	{
+        if (debug_mode) fprintf(stderr, "Clearing option: %s\n",option_list[i]->long_name);
 		if(option_list[i]->long_name != NULL) free(option_list[i]->long_name);
 		//if(option_list[i]->short_name != NULL) free(option_list[i]->short_name);
 		//do nothing to has_arg
+        
 		if(option_list[i]->arg != NULL) free(option_list[i]->arg);
 		//do nothing to was_set
+            ;
 		if(option_list[i]->info != NULL) free(option_list[i]->info);
 		//do nothing to affinity
+        
+        //printf("%p\n", option_list[i]);
+        //if(i != 3)
 		free(option_list[i]);
 	}
+        
 	free(option_list);
 	option_list = NULL;
 	option_count = 0;
@@ -783,7 +888,7 @@ int attach_plugin(char *name)
 	int (*get_info)(struct plugin_info *ppi) = dlsym(pt, "plugin_get_info");
 	if (get_info == NULL)
 		return -2;
-        int (*process_file)(const char *fname, struct option *in_opts[], size_t in_opts_len, char *out_buff, size_t out_buff_len) = dlsym(pt, "plugin_process_file");
+    int (*process_file)(const char *fname, struct option *in_opts[], size_t in_opts_len, char *out_buff, size_t out_buff_len) = dlsym(pt, "plugin_process_file");
 	if (process_file == NULL)
 		return -3;
 	//If we are here, both functions are found. Lets save this plugin
@@ -850,8 +955,12 @@ int clear_plugin_list()
 		return 0;
 	for (int i = 0; i < plugin_count; i++)
 	{
+        if (debug_mode) fprintf(stderr, "Clearing plugin: %s\n",plugin_list[i]->path);
 		free(plugin_list[i]->path);
+        free(plugin_list[i]->info.sup_opts);
 		dlclose(plugin_list[i]->dlopen_pt);
+        
+        free(plugin_list[i]);
 	}
 	free(plugin_list);
 	
@@ -878,7 +987,7 @@ int search_dir(char *dname, unsigned int depth)
 		{//for  every plugin we create struct option *in_opts[] and out_buff;
 			out_buffs[i] = (char *)calloc((MAX_STR_LEN + 1), sizeof(char));//out_buff is done
 			mnh(out_buffs[i], 82);
-			in_opts_arr[i] = (struct option **)malloc(plugin_list[i]->info.sup_opts_len);
+			in_opts_arr[i] = (struct option **)malloc(plugin_list[i]->info.sup_opts_len*sizeof(struct option *));
 			mnh(in_opts_arr[i], 83);
 			for (int j = 0; j < plugin_list[i]->info.sup_opts_len; j++)
 			{
@@ -909,7 +1018,7 @@ int search_dir(char *dname, unsigned int depth)
 			else
 			{
 				fprintf(stderr, "Wrong -C arg\n");
-				exit(85);
+				_mexit(85);
 			}
 		}*/
 		
@@ -933,9 +1042,10 @@ int search_dir(char *dname, unsigned int depth)
 	//open dir and search through it
 	if (!(dir = opendir(dname)))
 		return -1;
-
+    if (debug_mode) fprintf(stderr, "   Searching %s dir \n", dname);
 	while ( (entry = readdir(dir)) != NULL )//while not end of dir
 	{
+        if (debug_mode) fprintf(stderr, "  Analyzing %s\n", entry->d_name);
 		if (entry->d_type == DT_DIR)// if it is a dir
 		{//recursive entry
 			if ( (strncmp(entry->d_name, ".", MAX_STR_LEN) == 0) || (strncmp(entry->d_name, "..", MAX_STR_LEN) == 0) )
@@ -985,7 +1095,7 @@ int search_dir(char *dname, unsigned int depth)
 				else if (rez < 0)
 				{//plugin[i] can't assess this file. Error message shal be printed
 					fprintf(stderr, "Error(%d). Plugin(%s) can't assess %s.\n%s\n", rez, plugin_list[i]->info.plugin_name, real_fname, out_buffs[i]);
-					exit(100);
+					_mexit(100);
 				}
 					
 				//printf("%s\n", real_fname);
