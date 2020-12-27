@@ -15,7 +15,7 @@
 #define AND 1
 #define OR 0
 
-char version[] = "1.3.0";
+char version[] = "1.3.1";
 
 static int N_key;
 static int C_key;
@@ -725,7 +725,7 @@ int main(int argc, char* argv[])
 			
 
 			search_dir(".", 0);
-			printf("Found:%d files\n", found_count);	
+			printf("Found:%ld files\n", found_count);	
 			if(chdir(cwd) != 0)
 			{
 				if (debug_mode) fprintf(stderr, "Can't switch back to cwd after recursive search\n");
