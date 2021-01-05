@@ -15,7 +15,7 @@
 #define AND 1
 #define OR 0
 
-char version[] = "1.3.1";
+char version[] = "1.3.2";
 
 static int N_key;
 static int C_key;
@@ -157,6 +157,7 @@ int main(int argc, char* argv[])
 		c = getopt_long(argc, argv, "-:P:l:C:Nvhd", long_options_fs, &option_index);
 		if (c == -1)
 			break;
+        //printf("i: %d c: %d\n", option_index, c);
 		switch (c)
 		{
 			/*case 0:
@@ -167,7 +168,7 @@ int main(int argc, char* argv[])
 			break;*/
 
 			case 1:
-				//fprintf(stderr, "unknown arg on the first run\n");
+				//fprintf(stderr, "unknown arg on the first run %s\n", optarg);
 				break;
 			case 'P':
 				if (option_list[0]->was_set != 0)
@@ -216,7 +217,8 @@ int main(int argc, char* argv[])
 			case 'h':
 				break;
             case 'd':
-                if (option_list[6]->was_set !=0)
+                //printf("here %s\n", argv[optind]);
+                if (option_list[6]->was_set != 0)
 				{
 					printf("There is several -d(--debug) keys\n");
 					_mexit(1400);
@@ -224,7 +226,7 @@ int main(int argc, char* argv[])
 				option_list[6]->was_set++;
 				break;
 			case '?':
-				//fprintf(s"Found unknown key\n");
+				//printf("Found unknown key\n");
 				break;
 			case ':':
 				printf("Missing argument\n");

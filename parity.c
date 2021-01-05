@@ -80,11 +80,11 @@ int plugin_process_file(const char *fname,
 	}
 
 	off_t fsize =  statbuf.st_size;
-	if (fsize == 0)
+	/*if (fsize == 0)
 	{
 		snprintf(out_buff, out_buff_len, "File has size 0\n");
 		return -11;
-	}
+	}*/
 	unsigned int psize = getpagesize();
 	//psize = 3;
 	//printf("%d-%d|%s size:%di\n", mode, fd, fname, fsize);
